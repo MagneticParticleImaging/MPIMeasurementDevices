@@ -9,6 +9,7 @@
 #define STR_(a) #a
 #define INCLUDE_LIB(lib) STR(IDENT(LIB_HOME)IDENT(lib))
 #include INCLUDE_LIB(communication.h)
+#include INCLUDE_LIB(rp_watchdog.h)
 
 
 //#include <LiquidCrystal_I2C.h>
@@ -67,18 +68,6 @@ boolean HEATING_PERMISSION = true; // status: User-Disable function (Serial), ot
 //Added for porridge
 boolean RSD_Delta = true;
 
-//WatchDog
-boolean WD_FAIL_RP_M = false;
-boolean WD_FAIL_RP_S1 = false;
-boolean WD_FAIL_RP_S2 = false;
-boolean WD_FAIL_RP_S3 = false;
-boolean WD_FAIL_RP_S4 = false;
-boolean WD_FAIL_RP_S5 = false;
-boolean WD_FAIL_RP_S6 = false;
-boolean WD_FAIL_RP_S7 = false;
-boolean WD_FAIL_RP_S8 = false;
-boolean WD_FAIL = true; // init with fail, so watchdog needs to be runing to turn off
-
 
 
 //ACK buffer variables
@@ -102,27 +91,23 @@ unsigned long LCDtime;
 int countdownMS;
 
 //WatchDog
+//WatchDog
+boolean WD_FAIL = true; // init with fail, so watchdog needs to be runing to turn off
 boolean WDboot = true;
-unsigned long WD_RP_M_t0;
-unsigned long WD_RP_S1_t0;
-unsigned long WD_RP_S2_t0;
-unsigned long WD_RP_S3_t0;
-unsigned long WD_RP_S4_t0;
-unsigned long WD_RP_S5_t0;
-unsigned long WD_RP_S6_t0;
-unsigned long WD_RP_S7_t0;
-unsigned long WD_RP_S8_t0;
+RedPitayaWatchdog rpWatchdogs [] = {
+  RedPitayaWatchdog(1, 0, WD_tmax),
+  RedPitayaWatchdog(4, 3, WD_tmax),
+  RedPitayaWatchdog(7, 6, WD_tmax),
+  RedPitayaWatchdog(9, 10, WD_tmax),
+  RedPitayaWatchdog(15, 14, WD_tmax),
+  RedPitayaWatchdog(18, 17, WD_tmax),
+  RedPitayaWatchdog(21, 20, WD_tmax),
+  RedPitayaWatchdog(22, 13, WD_tmax),
+  RedPitayaWatchdog(25, 24, WD_tmax),
+  //RedPitayaWatchdog(28, 27, WD_tmax),
+};
+int numRPWatchdogs = sizeof(rpWatchdogs)/sizeof(*rpWatchdogs);
 
-boolean WD_SEND_M;
-boolean WD_SEND_S1;
-boolean WD_SEND_S2;
-boolean WD_SEND_S3;
-boolean WD_SEND_S4;
-boolean WD_SEND_S5;
-boolean WD_SEND_S6;
-boolean WD_SEND_S7;
-boolean WD_SEND_S8;
-unsigned long WD_TIME;
 
 //WatchDog GUI
 unsigned long WD_GUI_t0;
@@ -174,44 +159,24 @@ const int P_RP_Reset = A0;         // Red Pitaya shutdown supply voltage relais
 // const int P_Delta_RSD = 38;        // Delta current sources RSD - Not used now
 
 ///master
-const int P_WD_RP_M_Out = 0;
-const int P_WD_RP_M_In = 1;
 const int P_Al_RP_M = 2; //#28;
 ///slave 1
-const int P_WD_RP_S1_Out = 3;
-const int P_WD_RP_S1_In = 4;
 const int P_Al_RP_S1 = 5;
 ///slave 2
-const int P_WD_RP_S2_Out = 6;
-const int P_WD_RP_S2_In = 7;
 const int P_Al_RP_S2 = 8;
 ///slave 3
-const int P_WD_RP_S3_Out = 9;
-const int P_WD_RP_S3_In = 10;
 const int P_Al_RP_S3 = 11;
 ///slave 4
-const int P_WD_RP_S4_Out = 14;
-const int P_WD_RP_S4_In = 15;
 const int P_Al_RP_S4 = 16;
 ///slave 5
-const int P_WD_RP_S5_Out = 17;
-const int P_WD_RP_S5_In = 18;
 const int P_Al_RP_S5 = 19;
 ///slave 6
-const int P_WD_RP_S6_Out = 20;
-const int P_WD_RP_S6_In = 21;
 const int P_Al_RP_S6 = 12;
 ///slave 7
-const int P_WD_RP_S7_Out = 13;
-const int P_WD_RP_S7_In = 22;
 const int P_Al_RP_S7 = 23;
 ///slave 8
-const int P_WD_RP_S8_Out = 24;
-const int P_WD_RP_S8_In = 25;
 const int P_Al_RP_S8 = 26;
 ///slave 9 NOT IN USE
-const int P_WD_RP_S9_Out = 27;
-const int P_WD_RP_S9_In = 28;
 const int P_Al_RP_S9 = 29;
 
 // //AETechron
@@ -315,8 +280,6 @@ int getCommands(char* cmd){
 void setup() //
 {
 
-  WD_TIME = millis();
-
   ////////////////////////
   ///Define InOut State///
   ////////////////////////
@@ -327,22 +290,16 @@ void setup() //
 
   ///Red Pitayas
   pinMode(P_RP_Reset, OUTPUT);
-  pinMode(P_WD_RP_M_Out, OUTPUT);
-  pinMode(P_WD_RP_M_In, INPUT);
   pinMode(P_RP_RSD, OUTPUT);
   pinMode(P_Al_RP_M,  INPUT_PULLUP);
-  pinMode(P_WD_RP_S1_Out, OUTPUT);
-  pinMode(P_WD_RP_S1_In, INPUT);
   pinMode(P_Al_RP_S1,  INPUT_PULLUP);
-  pinMode(P_WD_RP_S2_Out, OUTPUT);
-  pinMode(P_WD_RP_S2_In, INPUT);
   pinMode(P_Al_RP_S2,  INPUT_PULLUP);
-  pinMode(P_WD_RP_S3_Out, OUTPUT);
-  pinMode(P_WD_RP_S3_In, INPUT);
   pinMode(P_Al_RP_S3,  INPUT_PULLUP);
-  pinMode(P_WD_RP_S4_Out, OUTPUT);
-  pinMode(P_WD_RP_S4_In, INPUT);
   pinMode(P_Al_RP_S4,  INPUT_PULLUP);
+
+  for (int i = 0; i < numRPWatchdogs; i++) {
+    rpWatchdogs[i].setup();
+  }
 
   ///AETechron
 //  pinMode(P_Al_AE1, INPUT);
@@ -434,203 +391,46 @@ void SCANNER_ENABLE() //No blocking of drive field and SeFos, RPs are on, (Isel?
 //Working Principle: Send a 1 to every RP. Aftwerwards the RP sends a 1 back to the Arduino. We measure that second signal with the Arduino. If its a one, we are happy. 
 //Aftwerwards we are sending a 0 to the RPs. When the RPs respond again with a zero then the RPs are alive. When we don't get the expected signal from the RPs we wait til it comes.
 //When we have to wait longer than a certain time, the Watch Dog Fail is triggered. toDo: Better explanation
-void WatchDog() 
+void WatchDog()
 {
-  if (WatchDogEnabled) {
-    if (WDboot) {
-      
-      //Initiate Watch Dog start
+  if (WatchDogEnabled)
+  {
+    if (WDboot)
+    {
+
+      // Initiate Watch Dog start
       WDboot = false;
-      WD_SEND_M = true;
-      WD_SEND_S1 = true;
-      WD_SEND_S2 = true;
-      WD_SEND_S3 = true;
-      WD_SEND_S4 = true;
-      WD_SEND_S5 = true;
-      WD_SEND_S6 = true;
-      WD_SEND_S7 = true;
-      WD_SEND_S8 = true;
-      //WD_SEND_S9 = true;
-
-      //Send first signal to the RPs
-      digitalWrite(P_WD_RP_M_Out, WD_SEND_M);
-      WD_RP_M_t0 = micros();
-      digitalWrite(P_WD_RP_S1_Out, WD_SEND_S1);
-      WD_RP_S1_t0 = micros();
-      digitalWrite(P_WD_RP_S2_Out, WD_SEND_S2);
-      WD_RP_S2_t0 = micros();
-      digitalWrite(P_WD_RP_S3_Out, WD_SEND_S3);
-      WD_RP_S3_t0 = micros();
-      digitalWrite(P_WD_RP_S4_Out, WD_SEND_S4);
-      WD_RP_S4_t0 = micros();
-      digitalWrite(P_WD_RP_S5_Out, WD_SEND_S1);
-      WD_RP_S5_t0 = micros();
-      digitalWrite(P_WD_RP_S6_Out, WD_SEND_S2);
-      WD_RP_S6_t0 = micros();
-      digitalWrite(P_WD_RP_S7_Out, WD_SEND_S3);
-      WD_RP_S7_t0 = micros();
-      digitalWrite(P_WD_RP_S8_Out, WD_SEND_S4);
-      WD_RP_S8_t0 = micros();
-      //digitalWrite(P_WD_RP_S9_Out, WD_SEND_S4);
-      //WD_RP_S9_t0 = micros();       
-      //lcd.clear();
-      //lcd.setCursor(0,0);
-      //lcd.print("WD_BOOT");
-      
-    }
-    if (digitalRead(P_WD_RP_M_In) == WD_SEND_M)
-    {
+      for (int i = 0; i < numRPWatchdogs; i++)
+      {
+        rpWatchdogs[i].reset();
+      }
       // lcd.clear();
-      // lcd.setCursor(0,2);
-      // lcd.print("WD_high");
-      WD_FAIL_RP_M = false;
-      // digitalWrite(13, LOW);  //LED_BUILTIN
-      WD_RP_M_t0 = micros();
-      WD_SEND_M = !(WD_SEND_M);
-      digitalWrite(P_WD_RP_M_Out, WD_SEND_M);
+      // lcd.setCursor(0,0);
+      // lcd.print("WD_BOOT");
     }
-    if (digitalRead(P_WD_RP_S1_In) == WD_SEND_S1)
-    {
-      WD_FAIL_RP_S1 = false;
-      WD_RP_S1_t0 = micros();
-      WD_SEND_S1 = !(WD_SEND_S1);
-      digitalWrite(P_WD_RP_S1_Out, WD_SEND_S1);
-    }
-    if (digitalRead(P_WD_RP_S2_In) == WD_SEND_S2)
-    {
-      WD_FAIL_RP_S2 = false;
-      WD_RP_S2_t0 = micros();
-      WD_SEND_S2 = !(WD_SEND_S2);
-      digitalWrite(P_WD_RP_S2_Out, WD_SEND_S2);
-    }
-    if (digitalRead(P_WD_RP_S3_In) == WD_SEND_S3)
-    {
-      WD_FAIL_RP_S3 = false;
-      WD_RP_S3_t0 = micros();
-      WD_SEND_S3 = !(WD_SEND_S3);
-      digitalWrite(P_WD_RP_S3_Out, WD_SEND_S3);
-    }
-    if (digitalRead(P_WD_RP_S4_In) == WD_SEND_S4)
-    {
-      WD_FAIL_RP_S4 = false;
-      WD_RP_S4_t0 = micros();
-      WD_SEND_S4 = !(WD_SEND_S4);
-      digitalWrite(P_WD_RP_S4_Out, WD_SEND_S4);
-    }
-    if (digitalRead(P_WD_RP_S5_In) == WD_SEND_S5)
-    {
-      WD_FAIL_RP_S5 = false;
-      WD_RP_S5_t0 = micros();
-      WD_SEND_S5 = !(WD_SEND_S5);
-      digitalWrite(P_WD_RP_S5_Out, WD_SEND_S5);
-    }
-    if (digitalRead(P_WD_RP_S6_In) == WD_SEND_S6)
-    {
-      WD_FAIL_RP_S6 = false;
-      WD_RP_S6_t0 = micros();
-      WD_SEND_S6 = !(WD_SEND_S6);
-      digitalWrite(P_WD_RP_S6_Out, WD_SEND_S6);
-    }
-    if (digitalRead(P_WD_RP_S7_In) == WD_SEND_S7)
-    {
-      WD_FAIL_RP_S7 = false;
-      WD_RP_S7_t0 = micros();
-      WD_SEND_S7 = !(WD_SEND_S7);
-      digitalWrite(P_WD_RP_S7_Out, WD_SEND_S7);
-    }
-    if (digitalRead(P_WD_RP_S8_In) == WD_SEND_S8)
-    {
-      WD_FAIL_RP_S8 = false;
-      WD_RP_S8_t0 = micros();
-      WD_SEND_S8 = !(WD_SEND_S8);
-      digitalWrite(P_WD_RP_S8_Out, WD_SEND_S8);
-    }
-    // if (digitalRead(P_WD_RP_S9_In) == WD_SEND_S9)
-    // {
-    //   WD_FAIL_RP_S9 = false;
-    //   WD_RP_S9_t0 = micros();
-    //   WD_SEND_S9 = !(WD_SEND_S9);
-    //   digitalWrite(P_WD_RP_S9_Out, WD_SEND_S9);
-    // }
-    // WD_SEND_S= !(WD_SEND_S);
-    //digitalWrite(P_WD_RP_S_Out,WD_SEND_S);
-    //delay(1000);
-    if ((micros() - WD_RP_M_t0) > WD_tmax)
-    {
-      // lcd.setCursor(0,3);
-      // lcd.print(micros()-WD_RP_M_t0);
-      // digitalWrite(13, HIGH);  //LED_BUILTIN
-      Errormessage = (Errormessage | 0x40);
-      WD_FAIL_RP_M = true;
-    }
-    if ((micros() - WD_RP_S1_t0) > WD_tmax)
-    {
-      Errormessage = (Errormessage | 0x80);
-      WD_FAIL_RP_S1 = true;
-    }
-    if ((micros() - WD_RP_S2_t0) > WD_tmax)
-    {
-      Errormessage = (Errormessage | 0x100);
-      WD_FAIL_RP_S2 = true;
-    }
-    if ((micros() - WD_RP_S3_t0) > WD_tmax)
-    {
-      Errormessage = (Errormessage | 0x200);
-      WD_FAIL_RP_S3 = true;
-    }
-    if ((micros() - WD_RP_S4_t0) > WD_tmax)
-    {
-      Errormessage = (Errormessage | 0x400);
-      WD_FAIL_RP_S4 = true;
-    }
-    if ((micros() - WD_RP_S5_t0) > WD_tmax)
-    {
-      //Errormessage = (Errormessage | 0x80); toDo:Errormessage
-      WD_FAIL_RP_S5 = true;
-    }
-    if ((micros() - WD_RP_S6_t0) > WD_tmax)
-    {
-      //Errormessage = (Errormessage | 0x100);
-      WD_FAIL_RP_S6 = true;
-    }
-    if ((micros() - WD_RP_S7_t0) > WD_tmax)
-    {
-      //Errormessage = (Errormessage | 0x200);
-      WD_FAIL_RP_S7 = true;
-    }
-    if ((micros() - WD_RP_S8_t0) > WD_tmax)
-    {
-      // Errormessage = (Errormessage | 0x400);
-      WD_FAIL_RP_S8 = true;
-    }
-    //if ((micros() - WD_RP_S9_t0) > WD_tmax)
-    //{
-    //  // Errormessage = (Errormessage | 0x400);
-    //  WD_FAIL_RP_S9 = true;
-    //}
 
-    WD_FAIL = WD_FAIL_RP_M || WD_FAIL_RP_S1|| WD_FAIL_RP_S2 || WD_FAIL_RP_S3|| WD_FAIL_RP_S4 || WD_FAIL_RP_S5 || WD_FAIL_RP_S6 || WD_FAIL_RP_S7 || WD_FAIL_RP_S8; //||WD_FAIL_RP_S8; toDo: Zurzeit sind nur Slave 1 und Slave 2 eingebaut. Die anderen beiden können nicht antworten.
-    //  Serial.println(WD_FAIL_RP_S);
-    ////////////////AAAAAAACHTUNGGG Hier wird gerade gepfuscht!!! toDo
-    RSD_Delta = WD_FAIL_RP_S1|| WD_FAIL_RP_S2 || WD_FAIL_RP_S3|| WD_FAIL_RP_S4;
-    if(!WD_FAIL)
+    WD_FAIL = false;
+    for (int i = 0; i < numRPWatchdogs; i++)
     {
-    Errormessage = (Errormessage & (0x3F)); //Clear upper 5 Bits of errormessage
+      if (!rpWatchdogs[i].check())
+      {
+        WD_FAIL = true;
+        Errormessage = (Errormessage | 1 << (5 + i));
+      }
+    }
+
+    // WD_FAIL = WD_FAIL_RP_M || WD_FAIL_RP_S1|| WD_FAIL_RP_S2 || WD_FAIL_RP_S3|| WD_FAIL_RP_S4 || WD_FAIL_RP_S5 || WD_FAIL_RP_S6 || WD_FAIL_RP_S7 || WD_FAIL_RP_S8; //||WD_FAIL_RP_S8; toDo: Zurzeit sind nur Slave 1 und Slave 2 eingebaut. Die anderen beiden können nicht antworten.
+    //   Serial.println(WD_FAIL_RP_S);
+    ////////////////AAAAAAACHTUNGGG Hier wird gerade gepfuscht!!! toDo
+    RSD_Delta = rpWatchdogs[0].hasFailed() || rpWatchdogs[1].hasFailed() || rpWatchdogs[2].hasFailed() || rpWatchdogs[3].hasFailed();
+    if (!WD_FAIL)
+    {
+      Errormessage = (Errormessage & (0x3F)); // Clear upper 5 Bits of errormessage
     }
   }
   else
   { // redpitaya watchdog disabled
     WD_FAIL = false;
-    WD_FAIL_RP_M = false;
-    WD_FAIL_RP_S1 = false;
-    WD_FAIL_RP_S2 = false;
-    WD_FAIL_RP_S3 = false;
-    WD_FAIL_RP_S4 = false;
-    WD_FAIL_RP_S5 = false;
-    WD_FAIL_RP_S6 = false;
-    WD_FAIL_RP_S7 = false;
-    WD_FAIL_RP_S8 = false;
-    //WD_FAIL_RP_S9 = false;
   }
 }
 
@@ -638,16 +438,6 @@ void WatchDog()
 void resetWatchDog() //Reset all WD variables. No Shut down of RPs
 {
   WDboot = true;
-  WD_FAIL_RP_M = false;
-  WD_FAIL_RP_S1 = false;
-  WD_FAIL_RP_S2 = false;
-  WD_FAIL_RP_S3 = false;
-  WD_FAIL_RP_S4 = false;
-  WD_FAIL_RP_S5 = false;
-  WD_FAIL_RP_S6 = false;
-  WD_FAIL_RP_S7 = false;
-  WD_FAIL_RP_S8 = false;
-  //WD_FAIL_RP_S9 = false;
   WD_FAIL = false;
 }
 
@@ -929,17 +719,10 @@ int enableWatchdog(char* cmd){
 }
 
 int getWatchdogStatus(char* cmd){
-  Serial.print(WD_FAIL_RP_M);
-  Serial.print(WD_FAIL_RP_S1);
-  Serial.print(WD_FAIL_RP_S2);
-  Serial.print(WD_FAIL_RP_S3);
-  Serial.print(WD_FAIL_RP_S4);
-  Serial.print(WD_FAIL_RP_S5);
-  Serial.print(WD_FAIL_RP_S6);
-  Serial.print(WD_FAIL_RP_S7);
-  Serial.print(WD_FAIL_RP_S8);
+  for (int i = 0; i < numRPWatchdogs; i++) {
+    Serial.print(rpWatchdogs[i].hasFailed());
+  }
   Serial.print("#");
-
 }
 
 int enableHeating(char* cmd){
@@ -1018,16 +801,8 @@ int debug(char* cmd){
   Serial.println(WD_FAIL);
   Serial.print("WDEnable ");
   Serial.println(WatchDogEnabled);
-  Serial.print("WDFAIL M ");
-  Serial.println( WD_FAIL_RP_M);
-  Serial.print("WDFAIL S1 ");
-  Serial.println( WD_FAIL_RP_S1);
-  Serial.print("WDFAIL S2 ");
-  Serial.println( WD_FAIL_RP_S2);
-  Serial.print("WDFAIL S3 ");
-  Serial.println( WD_FAIL_RP_S3);
-  Serial.print("WDFAIL S4 ");
-  Serial.println( WD_FAIL_RP_S4);
+  //Serial.print("WDFAIL M ");
+  //Serial.println( WD_FAIL_RP_M);
   //Serial.print("AETechron 1 alive? ");
   //Serial.println( P_Al_AE1);
   //Serial.print("AETechron 2 alive? ");
