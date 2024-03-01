@@ -10,7 +10,8 @@
 #define INCLUDE_LIB(lib) STR(IDENT(LIB_HOME)IDENT(lib))
 #include INCLUDE_LIB(communication.h)
 #include INCLUDE_LIB(rp_watchdog.h)
-
+//#include "communication.h"
+//#include "rp_watchdog.h"
 
 //#include <LiquidCrystal_I2C.h>
 
@@ -249,7 +250,7 @@ commandCallback_t cmdHandler[] = {
 
 
 #define INPUT_BUFFER_SIZE 256
-SerialHandler<INPUT_BUFFER_SIZE> serialHandler = SerialHandler<INPUT_BUFFER_SIZE>(cmdHandler, sizeof(cmdHandler)/sizeof(*cmdHandler));
+SerialHandler serialHandler = SerialHandler(INPUT_BUFFER_SIZE, cmdHandler, sizeof(cmdHandler)/sizeof(*cmdHandler));
 
 int getCommands(char* cmd){
     //Serial.print(Command);"Debug,WDFAIL_S1-4/M?(without quotes, Structure !COMMAND*#)
