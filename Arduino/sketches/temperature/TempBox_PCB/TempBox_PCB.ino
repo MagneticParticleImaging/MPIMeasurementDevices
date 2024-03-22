@@ -2,9 +2,16 @@
 #define VERSION "3" // After every communication protocol change, increase this number and commit with ARDUINO_TYPE:VERSION as message!
 #include <Arduino.h>
 #include <SPI.h>
-#include "MAX31865.h"
+#include "MAX31865.h" // https://github.com/olewolf/arduino-max31865
 
-#define NUM_SENSORS 21      // make sure to change initialization and configuration, and check_temps as well
+// Include our libs
+#define LIB_HOME /home/.../MPIMeasurementDevices/Arduino/lib/
+#define IDENT(x) x
+#define STR(a) STR_(a)
+#define STR_(a) #a
+#define INCLUDE_LIB(lib) STR(IDENT(LIB_HOME)IDENT(lib))
+#include INCLUDE_LIB(communication.h)
+
 
 // Timing
 #define delaySensors 300    // [ms] Delay with which sensors are read/updated
@@ -19,7 +26,8 @@ boolean ACK_COMMANDS = false;  // display output of every received command
 boolean PRINT_FAULTS = false;  // display fault type message of sensor
 boolean PRINT_ERRORS = false;  // display error type message of sensor: SPAMS SERIAL!
 boolean SERIAL_PRINT_UNKNOWN = false; // printing wrong commands and list of all commands
-double VAL_INIT_MAX_TEMPS[NUM_SENSORS] = {70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,60.0,60.0,60.0};// DOUBLE-CHECK LENGTH!!
+double VAL_INIT_MAX_TEMPS[] = {70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,60.0,60.0,60.0};// DOUBLE-CHECK LENGTH!!
+const unsigned int num_sensors = sizeof(VAL_INIT_MAX_TEMPS)/sizeof(*VAL_INIT_MAX_TEMPS);
 
 // LED PCB to front of box
 #define P_LED_Status 2
@@ -41,7 +49,6 @@ double  Temp_High_Cabinet  = 86.5;
 //////////////////////////////////////////////////////
 // CS numbering corresponds to label of temp-ports  //
 //////////////////////////////////////////////////////
-#define NUM_RTD_CLICKS 18
 #define PIN_RTD_CS_1 22 
 #define PIN_RTD_CS_2 23 
 #define PIN_RTD_CS_3 24 
@@ -61,11 +68,12 @@ double  Temp_High_Cabinet  = 86.5;
 #define PIN_RTD_CS_17 38 
 #define PIN_RTD_CS_18 39
 
-const int rtd_pins[NUM_RTD_CLICKS] = {PIN_RTD_CS_1, PIN_RTD_CS_2, PIN_RTD_CS_3, PIN_RTD_CS_4, PIN_RTD_CS_5, PIN_RTD_CS_6, PIN_RTD_CS_7, PIN_RTD_CS_8,
+const int rtd_pins[] = {PIN_RTD_CS_1, PIN_RTD_CS_2, PIN_RTD_CS_3, PIN_RTD_CS_4, PIN_RTD_CS_5, PIN_RTD_CS_6, PIN_RTD_CS_7, PIN_RTD_CS_8,
           PIN_RTD_CS_9, PIN_RTD_CS_10, PIN_RTD_CS_11, PIN_RTD_CS_12, PIN_RTD_CS_13, PIN_RTD_CS_14, PIN_RTD_CS_15, PIN_RTD_CS_16, PIN_RTD_CS_17, PIN_RTD_CS_18};
-MAX31865_RTD *rtd_sensors[NUM_RTD_CLICKS];
+const unsigned int num_rtd_clicks = sizeof(rtd_pins)/sizeof(*rtd_pins);
+MAX31865_RTD *rtd_sensors[num_rtd_clicks];
 
-boolean STATE_ALARM[NUM_SENSORS];
+boolean STATE_ALARM[num_sensors];
 
 #define PIN_ALARM 12  // alarm pin. active-high. LOW: all good, will be pulled HIGH as avg temperature exceeds temp_max
                       // this way the other Arduino can use an INTERNAL_PULLUP for init. If disconnected or similar - fail.
@@ -74,24 +82,14 @@ boolean STATE_ALARM[NUM_SENSORS];
 #define R_ref 470      //reference resistor on board of MAX31865
 #define temp_init -1  //initial temp value
 
-double temp_max[NUM_SENSORS];  //define at which temperature the arduino raises alarm
-double temp_current[NUM_SENSORS];
-int temp_status[NUM_SENSORS];
-int temp_counter[NUM_SENSORS];
+double temp_max[num_sensors];  //define at which temperature the arduino raises alarm
+double temp_current[num_sensors];
+int temp_status[num_sensors];
+int temp_counter[num_sensors];
 double Temp;  // initiate once, not in every forloop
 int noAlarm;  // detect if all temps were okay
 
 // Communication
-#define INPUT_BUFFER_SIZE 256
-char input_buffer[INPUT_BUFFER_SIZE];
-unsigned int input_pos = 0;
-
-typedef struct {
-  const char * id;
-  int (*handler)(char*);
-} commandHandler_t;
-
-// Command Declarations
 int getAllTemps(char*);
 int getTemps(char*);
 int getMaxTemp(char*);
@@ -101,9 +99,9 @@ int getCommands(char*);
 int getFaults(char*);
 //int setFoo(char*);
 
-commandHandler_t cmdHandler[] = {
+commandCallback_t cmdHandler[] = {
   {"GET:ALLTEMPS", getAllTemps},
-  {"GET:TEMPS:", getTemps},
+  {"GET:TEMPS", getTemps},
   {"GET:MAXT", getMaxTemp},
   {"SET:MAXT", setMaxTemp},
   {"VERSION", getVersion},
@@ -111,6 +109,10 @@ commandHandler_t cmdHandler[] = {
   {"GET:FAULTS", getFaults},
   //{"FOO", setFoo} //for new function: Add command declaration and then command definition (function body)
 };
+
+#define INPUT_BUFFER_SIZE 256
+SerialHandler serialHandler = SerialHandler(INPUT_BUFFER_SIZE, cmdHandler, sizeof(cmdHandler)/sizeof(*cmdHandler));
+
 
 int getCommands(char*) {
   Serial.println("Valid Commands (without quotes):");
@@ -144,7 +146,7 @@ void setup() {  // run once
   pinMode(P_LED_Alarm, OUTPUT);
   pinMode(P_LED_Status, OUTPUT);
   pinMode(PIN_ALARM, OUTPUT);
-  for (int i = 0; i < NUM_RTD_CLICKS; i++) {
+  for (int i = 0; i < num_rtd_clicks; i++) {
     pinMode(rtd_pins[i], OUTPUT);
   }
   
@@ -164,12 +166,12 @@ void setup() {  // run once
     Low threshold:  0x0000
     High threshold:  0x7fff
   */
-  for (int i = 0; i < NUM_RTD_CLICKS; i++) {
+  for (int i = 0; i < num_rtd_clicks; i++) {
     rtd_sensors[i] = new MAX31865_RTD(MAX31865_RTD::RTD_PT100, rtd_pins[i], R_ref);
     rtd_sensors[i]->configure( true, true, false, true, MAX31865_FAULT_DETECTION_NONE, true, true, 0x0000, 0x7fff );
   }
 
-  for (int i=0;i<NUM_SENSORS;i++) { 
+  for (int i=0;i<num_sensors;i++) { 
     temp_max[i] = VAL_INIT_MAX_TEMPS[i];
     temp_current[i] = temp_init; //init for all temps
     temp_status[i] = 0;
@@ -206,7 +208,7 @@ void update_temperatures() {  // always updating ALL, if asked for specific ones
   digitalWrite(P_LED_Status, HIGH);
   //digitalWrite(LED_BUILTIN, HIGH);
 
-  for (int i = 0; i < NUM_RTD_CLICKS; i++) {
+  for (int i = 0; i < num_rtd_clicks; i++) {
     read_temperatures(rtd_sensors[i], i);
   }
 
@@ -224,7 +226,7 @@ void update_temperatures() {  // always updating ALL, if asked for specific ones
 //*******************************************
 void check_and_set_alarm() {
 
-  for (int i=0;i<NUM_SENSORS;i++) { //check all sensors for alarm
+  for (int i=0;i<num_sensors;i++) { //check all sensors for alarm
     if (temp_current[i] >= temp_max[i] && temp_current[i] < 250 && temp_current[i] > -10) {
       STATE_ALARM[i] = true;
     } else {
@@ -237,7 +239,7 @@ void check_and_set_alarm() {
   }
 
   noAlarm = 0;
-  for (int i=0;i<NUM_SENSORS;i++) {  //set ALARM_Pin if any alarm detected
+  for (int i=0;i<num_sensors;i++) {  //set ALARM_Pin if any alarm detected
     if (STATE_ALARM[i]) {
       digitalWrite(PIN_ALARM, HIGH);  // Alarm on. Active High.
       digitalWrite(P_LED_Alarm, HIGH);
@@ -255,7 +257,7 @@ void check_and_set_alarm() {
     }
   }
 
-  if ( noAlarm == NUM_SENSORS ) {
+  if ( noAlarm == num_sensors ) {
     digitalWrite(PIN_ALARM, LOW);  // Alarm off. All Temps clear. grounded internal PULL_UP of other arduino.
     digitalWrite(P_LED_Alarm, LOW);
   } 
@@ -317,14 +319,14 @@ void print_fault(int fault, int ndx) {
 
 
 //*******************************************
-void print_temperatures(int *sensors, int num_sensors) {  
+void print_temperatures(int *sensors, int sensors_size) {  
   int index = 0;
   Serial.print("TEMPS:");
-  for(int i=0;i<num_sensors;i++) {
+  for(int i=0;i<sensors_size;i++) {
     index = sensors[i];
-    if (index > 0 && index <= NUM_SENSORS) {
+    if (index > 0 && index <= num_sensors) {
       Serial.print(temp_current[index-1]);
-      if (i < num_sensors-1) {
+      if (i < sensors_size-1) {
         Serial.print(",");
       }
     } else {
@@ -336,14 +338,14 @@ void print_temperatures(int *sensors, int num_sensors) {
 
 
 //*******************************************
-void print_maxima(int *sensors, int num_sensors) {
+void print_maxima(int *sensors, int sensors_size) {
   int index = 0;
   Serial.print("MAXT:GET:");
-  for(int i=0;i<num_sensors;i++) {
+  for(int i=0;i<sensors_size;i++) {
     index= sensors[i]; 
     if (index > 0 && index <= num_sensors) {
       Serial.print(temp_max[index-1]);
-      if (i < num_sensors-1) {
+      if (i < sensors_size-1) {
         Serial.print(",");
       }
     } else {
@@ -357,13 +359,13 @@ void print_maxima(int *sensors, int num_sensors) {
 //*******************************************
 void set_maxima(double *maxima, int num) {
   double val;
-  if (num == NUM_SENSORS) { //fill array
+  if (num == num_sensors) { //fill array
     Serial.print("MAXT:SET:");
-    for(int i=0;i<NUM_SENSORS;i++) {
+    for(int i=0;i<num_sensors;i++) {
       val = maxima[i];
       temp_max[i] = val;
       Serial.print(val);
-      if (i < NUM_SENSORS-1) {
+      if (i < num_sensors-1) {
         Serial.print(",");
       }
     }
@@ -372,34 +374,17 @@ void set_maxima(double *maxima, int num) {
     Serial.print("Received ");
     Serial.print(num);
     Serial.print(", please submit the expected number of max temperatures: ");
-    Serial.print(NUM_SENSORS);
+    Serial.print(num_sensors);
     Serial.println("#");
   }
 }
 
-bool updateBufferUntilDelim(char delim) {
-  char nextChar;
-  while (Serial.available() > 0) {
-      nextChar = Serial.read();
-      if (nextChar == delim) {
-        input_buffer[input_pos] = '\0';
-        input_pos = 0;
-        return true;
-      } else if (nextChar != '\n') {
-        input_buffer[input_pos % (INPUT_BUFFER_SIZE - 1)] = nextChar; // Size - 1 to always leave room for \0
-        input_pos++;
-      }
-  }
-  return false;
-}
-
-
 int getAllTemps(char *cmd) {
-  int sensors[NUM_SENSORS];
-  for(int i=0;i<NUM_SENSORS;i++) {
+  int sensors[num_sensors];
+  for(int i=0;i<num_sensors;i++) {
     sensors[i] = i + 1; // Sensors are counted 1 ... n
   }
-  print_temperatures(sensors, NUM_SENSORS);
+  print_temperatures(sensors, num_sensors);
   Serial.flush();     
 }
 
@@ -420,11 +405,11 @@ int getTemps(char *cmd) {
 }
 
 int getMaxTemp(char *cmd) {
-  int sensors[NUM_SENSORS];
-  for(int i=0;i<NUM_SENSORS;i++) {
+  int sensors[num_sensors];
+  for(int i=0;i<num_sensors;i++) {
     sensors[i] = i + 1; // Sensors are counted 1 ... n
   }
-  print_maxima(sensors, NUM_SENSORS);
+  print_maxima(sensors, num_sensors);
   Serial.flush();     
 }
 
@@ -454,82 +439,17 @@ int getVersion(char *cmd) {
 
 
 int getFaults(char*) {
-for(int i=0;i<NUM_SENSORS;i++) {
+    for(int i=0;i<num_sensors;i++) {
     print_fault(temp_status[i],i);
   }
 }
 
 
-//*****************************************************************
-void serialCommand() {
-  int s=-1;
-  int e=-1;
-  char beginDelim='!';
-  char *beginCmd;
-  char endDelim='*';
-  char *endCmd;
-  char *command;
-  bool done = false;
-  bool unknown = false;
-  
-  // determin substring
-  if(Serial.available()>0) {
-    done = updateBufferUntilDelim('#');   
-  }
-
-  if (done) {
-    s = -1;
-    if ((beginCmd = strchr(input_buffer, beginDelim)) != NULL) {
-      s = beginCmd - input_buffer;
-    }
-
-    e = -1;
-    if ((endCmd = strchr(input_buffer, endDelim)) != NULL) {
-      e = endCmd - input_buffer;
-    }   
-
-    unknown = true;
-    //check if valid command
-    if (e!=-1 && s!=-1) {
-      command = beginCmd + 1;
-      *endCmd = '\0';
-      //Command=Command.substring// toDO: # will cause "" to display with rules..
-      if (ACK_COMMANDS) {
-        Serial.print("received command: '");
-        Serial.print(command);
-        Serial.println("'");
-      }
-      Serial.flush();
-
-      //check for known commands
-      for (int i = 0; i < sizeof(cmdHandler)/sizeof(*cmdHandler); i++) {
-        if (strncmp(cmdHandler[i].id, command, strlen(cmdHandler[i].id)) == 0) {
-          cmdHandler[i].handler(command);
-          unknown = false;
-          input_buffer[0] = '\0'; // "Empty" input buffer
-          break;
-        }
-      }
-    }
-    
-    if (unknown && SERIAL_PRINT_UNKNOWN) {
-      Serial.println("UNKNOWN");
-      Serial.print("Received input: ");
-      Serial.println(input_buffer);
-      getCommands(input_buffer);
-      Serial.println("#");
-      Serial.flush();  
-    }
-
-  }
-
-}
-
 
 //*****************************************************************
 void check_counter() {
 
-  for(int i=0;i<NUM_SENSORS;i++) {
+  for(int i=0;i<num_sensors;i++) {
     if(delaySensors*temp_counter[i] > delayResetTemp ) {
       temp_current[i] = temp_init; // Sensors are counted 1 ... n
       temp_counter[i] = 0;
@@ -581,7 +501,7 @@ void read_temperatures(MAX31865_RTD *rtd, int index) {
 ///////////////////////////////////////////////////////////////////
 
 void loop() {
-  serialCommand();
+  serialHandler.read();
   unsigned long current = millis();
   if (current - previous >= delaySensors) {
     previous = current;
