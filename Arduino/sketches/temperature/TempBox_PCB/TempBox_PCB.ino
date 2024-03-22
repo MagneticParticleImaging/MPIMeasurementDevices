@@ -5,7 +5,7 @@
 #include "MAX31865.h" // https://github.com/olewolf/arduino-max31865
 
 // Include our libs
-#define LIB_HOME /home/.../MPIMeasurementDevices/Arduino/lib/
+#define LIB_HOME /home/hackelberg/git/MPIMeasurementDevices/Arduino/lib/
 #define IDENT(x) x
 #define STR(a) STR_(a)
 #define STR_(a) #a
@@ -88,6 +88,10 @@ int temp_status[num_sensors];
 int temp_counter[num_sensors];
 double Temp;  // initiate once, not in every forloop
 int noAlarm;  // detect if all temps were okay
+
+// Preallocate update variables to avoid heap-fragmentation
+double update_double[num_sensors];
+int update_int[num_sensors];
 
 // Communication
 int getAllTemps(char*);
@@ -183,20 +187,6 @@ void setup() {  // run once
   //Serial.println("Initialized.#");
 }
 
-
-//*** Utility ***********************************
-int countChars( char* s, char c ) {
-    return *s == '\0'
-              ? 0
-              : countChars( s + 1, c ) + (*s == c);
-}
-
-char* string2char(String command) {
-    if(command.length()!=0){
-        char *p = const_cast<char*>(command.c_str());
-        return p;
-    }
-}
 
 
 //********************************************************************************************************
@@ -389,18 +379,15 @@ int getAllTemps(char *cmd) {
 }
 
 int getTemps(char *cmd) {
-  int num = countChars(cmd, ',') + 1;
-  int *sensors = (int*) malloc(num * sizeof(int));
+  int num = serialHandler.countChars(cmd, ',') + 1;
 
   char *base = strchr(cmd, '<') + 1; // Move to first number
-  char *numEnd;
-  for (int i = 0; i < num; i++) {
-    sensors[i] = strtol(base, &numEnd, 0); //TODO could add more error checking here with errno and end, start
-    base = strchr(numEnd, ',') + 1; // TODO could be more robust by checking for null
+  int result = serialHandler.readNumbers(base, update_int, num);
+
+  if (result == 0) {
+    print_temperatures(update_int, num);
   }
-  
-  print_temperatures(sensors, num);          
-  free(sensors);
+        
   Serial.flush();  
 }
 
@@ -414,18 +401,16 @@ int getMaxTemp(char *cmd) {
 }
 
 int setMaxTemp(char *cmd) {
-  int num = countChars(cmd, ',') + 1;
-  double *maxima = (double*) malloc(num * sizeof(double));
+  int num = serialHandler.countChars(cmd, ',') + 1;
 
   char *base = strchr(cmd, '<') + 1; // Move to first number
-  char *numEnd;
-  for (int i = 0; i < num; i++) {
-    maxima[i] = strtod(base, &numEnd); //TODO could add more error checking here with errno and end, start
-    base = strchr(numEnd, ',') + 1; // TODO could be more robust by checking for null
+  int result = serialHandler.readNumbers(base, update_double, num);
+
+  if (result == 0) {
+    set_maxima(update_double, num);
   }
 
-  set_maxima(maxima, num);
-  free(maxima);
+  set_maxima(update_double, num);
   Serial.flush();  
 }
 

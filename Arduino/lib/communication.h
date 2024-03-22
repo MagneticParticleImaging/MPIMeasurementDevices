@@ -18,6 +18,13 @@ typedef struct
 class SerialHandler {
     
     public:
+    /*
+        Constructs a SerialHandler which reads the Serial input and tries to find a fitting callback to invoke.
+
+        @param size: Number of characters in the input buffer, must be longer than the longest command
+        @param cmds: Array of callbacks, first fitting ID is invoked per found command
+        @param numCmds: Size of cmds array
+    */
     SerialHandler(int size, commandCallback_t cmds[], int numCmds) : buffer_size(size), cmds(cmds), cmd_size(numCmds) {
         buffer_position = 0;
         buffer = new char [buffer_size];
@@ -25,7 +32,25 @@ class SerialHandler {
     ~SerialHandler() {
         delete buffer;
     };
+    /*
+        Reads characters from the Serial input until no more are available or a command delimiter has been found.
+        If a command delimiter has been found it invokes the first fitting callback (case-sensitive).
+    */
     int read();
+    /*
+        Count the number of occurences in a given null-terminated string.
+    */
+    int countChars(char *s, char c);
+    /*
+        Reads a comma-sepearted list of numbers from a null-termianted string. Excpects to find size elements, otherwise returns an error.
+
+        @return 0: Successfully parsed size numbers
+        @return -1: Found an invalid digit
+        @return -2: String ends before all numbers could be parsed
+    
+    */
+    int readNumbers(char *s, int* array, int size);
+    int readNumbers(char *s, double *array, int size);
 
     private:
     bool updateBufferUntilDelim();
@@ -127,6 +152,66 @@ int SerialHandler::read() // Serial communication with PC in particular julia co
     }
 
     return -1;
+}
+
+int SerialHandler::countChars(char* string, char search)
+{
+    int count = 0;
+    for (int i = 0; i < buffer_size; i++) {
+        if (string[i] == search) {
+            count++;
+        }
+        if (string[i] == '\0') {
+            break; 
+        }
+    }
+    return count;
+}
+
+int SerialHandler::readNumbers(char *base, int* array, int size)
+{
+    int result = 0;
+    char * end;
+    for (int i = 0; i < size; i++) {
+        array[i] = strtol(base, &end, 0);
+
+        if (base == end) { // No (valid) digits found
+            return -1;
+        } else if (*end == '\0' && i != size - 1) { // Premature end of string
+            return -2;
+        }
+
+        base = strchr(end, ',');
+        if (base == NULL && i != size - 1) { // Premature end of string
+            return -3;
+        }
+        base++; // Advance past ','
+    }
+
+    return result;
+}
+
+int SerialHandler::readNumbers(char *base, double* array, int size)
+{
+    int result = 0;
+    char * end;
+    for (int i = 0; i < size; i++) {
+        array[i] = strtod(base, &end);
+
+        if (base == end) { // No (valid) digit found
+            return -1;
+        } else if (*end == '\0' && i != size - 1) { // Premature end of string
+            return -2;
+        }
+
+        base = strchr(end, ',');
+        if (base == NULL && i != size - 1) { // Premature end of string
+            return -3;
+        }
+        base++; // Advance past ','
+    }
+
+    return result;
 }
 
 #endif
