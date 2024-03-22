@@ -23,9 +23,6 @@ class RedPitayaWatchdog
     bool fail;
 };
 
-#include "Arduino.h"
-#include "rp_watchdog.h"
-
 void RedPitayaWatchdog::setup()
 {
     pinMode(output, OUTPUT);

@@ -10,24 +10,9 @@
 #define INCLUDE_LIB(lib) STR(IDENT(LIB_HOME)IDENT(lib))
 #include INCLUDE_LIB(communication.h)
 #include INCLUDE_LIB(rp_watchdog.h)
-//#include "communication.h"
-//#include "rp_watchdog.h"
-
-//#include <LiquidCrystal_I2C.h>
 
 
 #include <Adafruit_SleepyDog.h>
-
-// FULL PATHS ARE REQUIRED FOR ARDUINO
-
-//LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
-
-//Errormessage Bits:
-//|16:AE2_OverTemp|15:AE1_OverTemp|14:AE2_OverLoad|13:AE1_OverLoad|12:AE2_OverVoltage|11:AE1_OverVoltage|10:WD_FAIL_RP_S4|9:WD_FAIL_RP_S3|8:WD_FAIL_RP_S2|7:WD_FAIL_RP_S1|6:WD_FAIL_RP_M|5:|4:|3:|2:|1:|
-
-// Define all Pinouts
-//P=Pin, WD= WatchDog, RP RedPitaya, M Master , S Slave , RSD= Remote Shutdown, Al=Alive
-//======================================================================================
 
 /////////////////////////
 //// SETUP Variables ////
@@ -96,15 +81,15 @@ int countdownMS;
 boolean WD_FAIL = true; // init with fail, so watchdog needs to be runing to turn off
 boolean WDboot = true;
 RedPitayaWatchdog rpWatchdogs [] = {
-  RedPitayaWatchdog(1, 0, WD_tmax),
-  RedPitayaWatchdog(4, 3, WD_tmax),
-  RedPitayaWatchdog(7, 6, WD_tmax),
-  RedPitayaWatchdog(9, 10, WD_tmax),
-  RedPitayaWatchdog(15, 14, WD_tmax),
-  RedPitayaWatchdog(18, 17, WD_tmax),
-  RedPitayaWatchdog(21, 20, WD_tmax),
-  RedPitayaWatchdog(22, 13, WD_tmax),
-  RedPitayaWatchdog(25, 24, WD_tmax),
+  RedPitayaWatchdog(3, 2, WD_tmax),
+  //RedPitayaWatchdog(4, 3, WD_tmax),
+  //RedPitayaWatchdog(7, 6, WD_tmax),
+  //RedPitayaWatchdog(9, 10, WD_tmax),
+  //RedPitayaWatchdog(15, 14, WD_tmax),
+  //RedPitayaWatchdog(18, 17, WD_tmax),
+  //RedPitayaWatchdog(21, 20, WD_tmax),
+  //RedPitayaWatchdog(22, 13, WD_tmax),
+  //RedPitayaWatchdog(25, 24, WD_tmax),
   //RedPitayaWatchdog(28, 27, WD_tmax),
 };
 int numRPWatchdogs = sizeof(rpWatchdogs)/sizeof(*rpWatchdogs);
@@ -112,12 +97,6 @@ int numRPWatchdogs = sizeof(rpWatchdogs)/sizeof(*rpWatchdogs);
 
 //WatchDog GUI
 unsigned long WD_GUI_t0;
-
-// RelaisDIOS
-//int P_DC_1_RSD=23; //DisableAE Techron
-//int P_DC_2_RSD=25;
-//int P_AC_1_RSD=27; //EnableAC?
-//int P_AC_2_RSD=29;
 
 // Errormessage
 int32_t Errormessage = 0x10000;
@@ -138,21 +117,6 @@ const int P_ENABLEAC = 40;        // Relais that blocks AC signal (old: EnableAC
 
 // Added for Porrdige
 const int P_RSD_Delta = 30; //Optokoppler to Deltas
-
-// //Control Box Communication
-// const int P_RP_reset_CB  = A6;    // Button for Resetting RPs - active high (CB: ControlBox)
-// const int P_SU_fail_ack_CB = A7;  // Button for Acknowlegde fail and restart wohle surveillance unit - active high
-// const int P_HeatingRelais = A8;  // PinOut: Relais of Temperature Heating, active high
-// const int P_LNA_status = A9;      // toDo: CONNECT and get signal from LNA
-// const int P_Overtemp = A10;       // Comunication Pin from TemperatureUnit, active LOW - all okay.
-// const int P_SEFO_24V = 53;        // toDo: pin auf analog wegen zugang?, get 24V feedback via Sp. Teiler
-
-// //ControlBox LEDs
-// const int P_LED_Measurement = A11; // displays ready OR ACenable
-// const int P_LED_DFFieldON = A12;   // displays DFon 
-// const int P_LED_FAIL = A13;        // displays AETech fail, Tempfail and LNA fail
-// const int P_LED_RP_alive = A14;    // displays !Watchdog fail
-// const int P_LED_SU_fail = A15;     // any of the above + blinks during reset + memory 
 
 const int P_RP_RSD = A1;           // Red Pitaya Remote RSD, UND Verknüpfung vor Ausgang
 const int P_RP_Reset = A0;         // Red Pitaya shutdown supply voltage relais
@@ -179,18 +143,6 @@ const int P_Al_RP_S7 = 23;
 const int P_Al_RP_S8 = 26;
 ///slave 9 NOT IN USE
 const int P_Al_RP_S9 = 29;
-
-// //AETechron
-// const int P_Al_AE1 = 44;      //Alive Signal AE Techron 1
-// const int P_Al_AE2 = 42;      //Alive Signal AE Techron 2
-// const int P_AEs_Reset = 48;   //Reset both AE Techrons
-
-// const int P_AE1_OverVoltage = A0; //Fail states AE_Techron 1/2
-// const int P_AE2_OverVoltage = A1;
-// const int P_AE1_OverLoad = A2; 
-// const int P_AE2_OverLoad = A3;
-// const int P_AE1_OverTemp = A4; 
-// const int P_AE2_OverTemp = A5;
 
 /////////////////////
 ////Communication////
@@ -302,43 +254,6 @@ void setup() //
     rpWatchdogs[i].setup();
   }
 
-  ///AETechron
-//  pinMode(P_Al_AE1, INPUT);
-//  pinMode(P_Al_AE2, INPUT);
-//  pinMode(P_AEs_Disable, OUTPUT);
-//  pinMode(P_AEs_Reset, OUTPUT);
-//  pinMode(P_AE1_OverVoltage,INPUT);
-//  pinMode(P_AE2_OverVoltage,INPUT);
-//  pinMode(P_AE1_OverLoad,INPUT);
-//  pinMode(P_AE2_OverLoad,INPUT);
-//  pinMode(P_AE1_OverTemp,INPUT);
-//  pinMode(P_AE2_OverTemp,INPUT);
-  
-  ///Delta
-//  pinMode(P_Delta_RSD, OUTPUT);
-
-  ///Control Box Communication
-//  pinMode(P_RP_reset_CB, INPUT_PULLUP);    //active switch pulls to GND
-//  pinMode(P_SU_fail_ack_CB, INPUT_PULLUP); //active switch pulls to GND
-//  pinMode(P_LNA_status, INPUT);  //toDo: get 5V from LNAw/o connecting to its GND?
-//  pinMode(P_Overtemp, INPUT_PULLUP); // pulled down to GND by TempBox if okay. If it fails, anything not GND results in error.
-//  pinMode(P_SEFO_24V, INPUT_PULLUP);
-
-  ///Heating Control
-//  pinMode(P_HeatingRelais, OUTPUT);      //active high, enables heating
-
-  ///ControlBox LEDs
-//  pinMode(P_LED_Measurement, OUTPUT);
-//  pinMode(P_LED_DFFieldON, OUTPUT);
-//  pinMode(P_LED_FAIL, OUTPUT);
-//  pinMode(P_LED_RP_alive, OUTPUT);
-//  pinMode(P_LED_SU_fail, OUTPUT);
-
-  //Simulation RP
-  // pinMode(6, OUTPUT);
-  // pinMode(53, INPUT_PULLUP);
-  // pinMode(Temp_DF_C1, INPUT_PULLUP);
-  
   // Serial Monitor
   Serial.begin(9600);
   /* Serial.println("--- Start Serial Monitor SEND_RCVE ---");
@@ -443,54 +358,6 @@ void resetWatchDog() //Reset all WD variables. No Shut down of RPs
 }
 
 //======================================================================================
-void Watchdog_GUI()
-{
-  //if(WatchDogGUIEnabled){
-
-    //toDo: Add timing, check only every 300ms?
-    // Idee: 
-    // ENABLE:AC:TIME und dann time runterzählen >> disable when keine erneurung erhalten
-    // GUI watchdog brauch kein tic toc
-
-    //millis()%300 <= 100
-
-    //if(Command == "WD:GUI:TOCK")
-    //{
-    //  GUI_FAIL = false;
-    //  WD_GUI_t0 = micros();
-    //}
-    //if(micros()-WD_GUI_t0 > WD_GUI_tmax)
-    //{
-     // GUI_FAIL = true;
-    //}
-  //} else { //Watchdog turned off
-   // GUI_FAIL = false;
-  //}
-}
-
-
-//######################################################################################
-//======================================================================================
-// void controlBoxCommunication() //Communication (input) with the ControlBox on the desk. digitialRead() can be used for analog inputs, input_pullUP as well.
-// { 
-//   //debounce: switch1 - SU_fail_acknoledge
-//   ACK1_SU = !digitalRead(P_SU_fail_ack_CB);  //with ! on rising edge of switch contact, without ! when switch is turned off.
-//   if (ACK1_SU - ACK2_SU == -1) 
-//   {
-//     SU_FAIL_ACK = true;
-//   }
-//   ACK2_SU = ACK1_SU;
-
-//   //debounce: switch2 - RP_Reset
-//   ACK1_RP = !digitalRead(P_RP_reset_CB);  //with ! on rising edge of switch contact, without ! when switch is turned off.
-//   if (ACK1_RP - ACK2_RP == -1) 
-//   {
-//     RP_RESET_CB = true;
-//   }
-//   ACK2_RP = ACK1_RP;
-// }
-
-//======================================================================================
 void checkFailState() //Check whether all state variables are ok
 {
   if (RP_RESET_CB) //The Shutdown of the RP's would also be triggerd by SCANNER_SHUTDOWN()
@@ -554,69 +421,6 @@ void checkFailState() //Check whether all state variables are ok
 }
 
 //======================================================================================
-// void ControlBox_update_LEDs() {
-
-//   SU_READY = (!ANY_FAIL && PERMISSION );  //needs to be identical to SCANNER_ENABLE, except for GUI_ENABLEAC
-  
-//   LED_RP_ALIVE = !WD_FAIL && WatchDogEnabled;  //if WD fails, turn off RP alive LED
-//   LED_SU_FAIL = (WD_FAIL || !SEFO_24V || OVERTEMP || !LNA_STATUS || AEs_FAIL || GUI_FAIL) || SUFail_old_fail_blink();  //need SEFO to measure?
-//   LED_FAIL = FailLEDblink(); 
-//   LED_Measurement = LEDMeasurementBlink(); 
-//   LED_DFFieldON = DFFieldON;  
-
-//   analogWrite(P_LED_Measurement, 255*LED_Measurement);
-//   analogWrite(P_LED_DFFieldON, 255*LED_DFFieldON);
-//   analogWrite(P_LED_FAIL, 255*LED_FAIL);  
-//   analogWrite(P_LED_SU_fail, 255*LED_SU_FAIL); //Equals overall fail state
-//   analogWrite(P_LED_RP_alive, 255*LED_RP_ALIVE); //Equals !WD_FAIL
-// }
-
-//======================================================================================
-// bool FailLEDblink() {
-//   if( AEs_FAIL )  //check first: keep LED lit if AEFail is detected
-//   {
-//     return true;
-//   } 
-//   else if ( OVERTEMP ) {  //blink LED SLOW if overtemp by temperatureBox is detected
-//     return millis()%2000 <= 1000; //1s interval
-//   }
-//   else if ( !LNA_STATUS ) {  //blink LED FAST
-//     return millis()%400 <= 200; //200ms interval
-//   }
-//   else {
-//     return false;
-//   }
-// }
-
-
-//======================================================================================
-// bool LEDMeasurementBlink() {
-//   if( GUI_ENABLEAC )  //check first: keep LED lit if ACenabled from GUI
-//   {
-//     return true;
-//   } 
-//   else if ( SU_READY ) {  //blink when ready
-//     return millis()%2000 <= 1000; //1s interval
-//   }
-//   else {
-//     return false;
-//   }
-// }
-
-
-
-//======================================================================================
-// bool SUFail_old_fail_blink() {
-//   if ( !PERMISSION ) {  //if no PERMISSION: some error happend
-//     return millis()%3000 <= 300; //300ms blink in 2.5s interval
-//   }
-//   else {
-//     return false;
-//   }
-// }
-
-
-//======================================================================================
 // Serial Communication
 
 int getAnalog(char* cmd) {
@@ -674,21 +478,6 @@ int getStats(char* cmd) {
   Serial.println(GUI_FAIL);
   Serial.print("ANY_FAIL: ");
   Serial.println(ANY_FAIL);
-    
-  //Serial.print("AEs_FAIL: ");
-  //Serial.println(AEs_FAIL);
-  //Serial.print("AE1 Overload: ");
-  //Serial.println(AE1_OverLoad);
-  //Serial.print("AE2 Overload: ");
-  //Serial.println(AE2_OverLoad);
-  //Serial.print("AE1 OverVoltage: ");
-  //Serial.println(AE1_OverVoltage);
-  //Serial.print("AE2 OverVoltage: ");
-  //Serial.println(AE2_OverVoltage);
-  //Serial.print("AE1 OverTemp: ");
-  //Serial.println(AE1_OverTemp);
-  //Serial.print("AE2 OverTemp: ");
-  //Serial.println(AE2_OverTemp);
     
   Serial.print("LED_RP_ALIVE: ");
   Serial.println(LED_RP_ALIVE);
@@ -802,12 +591,6 @@ int debug(char* cmd){
   Serial.println(WD_FAIL);
   Serial.print("WDEnable ");
   Serial.println(WatchDogEnabled);
-  //Serial.print("WDFAIL M ");
-  //Serial.println( WD_FAIL_RP_M);
-  //Serial.print("AETechron 1 alive? ");
-  //Serial.println( P_Al_AE1);
-  //Serial.print("AETechron 2 alive? ");
-  //Serial.println( P_Al_AE1);
 }
 
 int getVersion(char *cmd) {
@@ -816,76 +599,6 @@ int getVersion(char *cmd) {
   Serial.print(VERSION);
   Serial.flush(); 
 }
-
-//======================================================================================
-// bool checkAETechrons() //Check for fail states at the AE-Techrons
-// {
-//   //Check for Errormessages from Ae-Techrons:
-//   AE1_OverVoltage = !digitalRead(P_AE1_OverVoltage); //LOW = Fail-State for all Pins
-//   AE2_OverVoltage = !digitalRead(P_AE2_OverVoltage);
-//   AE1_OverLoad = !digitalRead(P_AE1_OverLoad); 
-//   AE2_OverLoad = !digitalRead(P_AE2_OverLoad);
-//   AE1_OverTemp = !digitalRead(P_AE1_OverTemp); 
-//   AE2_OverTemp = !digitalRead(P_AE2_OverTemp);
-
-//   //Check whether 5V for fast interlock is operating:
-//   boolean AE1_Al = !digitalRead(P_Al_AE1);   
-//   boolean AE2_Al = !digitalRead(P_Al_AE2);
-
-
-//   AEs_FAIL = AE1_OverVoltage || AE2_OverVoltage || AE1_OverLoad || AE2_OverLoad || AE1_OverTemp || AE2_OverTemp || !AE1_Al || !AE2_Al;
-
-//   if (AE1_OverVoltage) //toDo: Noch testen ob die Bits richtig benutzt sind!!!!!!!!!!!!
-//   {
-//     Errormessage = (Errormessage | 0x800);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,11,0);
-//   }
-//   if (AE2_OverVoltage)
-//   {
-//     Errormessage = (Errormessage | 0x1000);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,12,0);
-//   }
-//   if (AE1_OverLoad)
-//   {
-//     Errormessage = (Errormessage | 0x2000);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,13,0);
-//   }
-//   if (AE2_OverLoad)
-//   {
-//     Errormessage = (Errormessage | 0x4000);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,14,0);
-//   }
-//   if (AE1_OverTemp)
-//   {
-//     Errormessage = (Errormessage | 0x8000);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,15,0);
-//   }
-//   if (AE2_OverTemp)
-//   {
-//     Errormessage = (Errormessage | 0x10000);
-//   }
-//   else
-//   {
-//     bitWrite(Errormessage,15,0);
-//   }
-
-//   return AEs_FAIL;
-// }
 
 //======================================================================================
 void RP_Reset() //Shut the RPs down for a specific time
@@ -925,70 +638,14 @@ void RP_Reset() //Shut the RPs down for a specific time
 //======================================================================================
 void SU_Reset()
 {
-  //Reset AETechron:
-//  digitalWrite(P_AEs_Reset, HIGH);
-  delay(200); //To trigger a reset a the AE Techron the Voltage should last 100 ms minimal
-//  digitalWrite(P_AEs_Reset, LOW);
-  delay(100);
-
-  //does not need to check other fails states, they will be check in checkFailState afterward anyway
-
-  // hard-reset certain fails, give power to the switch? will be updated in main loop anyway
-  //WD_FAIL = false;  //?? toDo: what else to reset?
-  //GUI_FAIL = false; //??
-  
+ // TODO 
 }
  
-
-// Fabi:
-// void check_all_outputs() {
-//   LED_RP_ALIVE = true;
-//   LED_SU_FAIL = true;
-//   LED_FAIL = true;
-//   LED_Measurement = true;
-//   LED_DFFieldON = true;
-  
-//   analogWrite(P_LED_Measurement, 255*LED_Measurement);
-//   delay(200);
-//   analogWrite(P_LED_DFFieldON, 255*LED_DFFieldON);
-//   delay(200);
-//   analogWrite(P_LED_FAIL, 255*LED_FAIL);
-//   delay(200);
-//   analogWrite(P_LED_SU_fail, 255*LED_SU_FAIL); //Equals overall fail state
-//   delay(200);
-//   analogWrite(P_LED_RP_alive, 255*LED_RP_ALIVE); //Equals !WD_FAIL
-//   delay(1500);
-
-//   LED_RP_ALIVE = false;
-//   LED_SU_FAIL = false;
-//   LED_FAIL = false;
-//   LED_Measurement = false;
-//   LED_DFFieldON = false;
-
-//   analogWrite(P_LED_Measurement, 255*LED_Measurement);
-//   delay(200);
-//   analogWrite(P_LED_DFFieldON, 255*LED_DFFieldON);
-//   delay(200);
-//   analogWrite(P_LED_FAIL, 255*LED_FAIL);
-//   delay(200);
-//   analogWrite(P_LED_SU_fail, 255*LED_SU_FAIL); //Equals overall fail state
-//   delay(200);
-//   analogWrite(P_LED_RP_alive, 255*LED_RP_ALIVE); //Equals !WD_FAIL
-//   delay(1500);
-// }
-
-
-//======================================================================================
-//======================================================================================
-
-
 void loop()
 {
   t0 = micros();
 
   WatchDog();                 // WatchDog for Red Pitaya Surveilliance
-  Watchdog_GUI();             // toDo: tested?
-//  controlBoxCommunication();  // Check for input from ControlBox
   checkFailState();           // Check for all single fail states and trigger overall fail state
   serialHandler.read();
   Watchdog.reset();           // Arduino internal watchDog reset (Without this reset the Arduino would reboot after a given time)

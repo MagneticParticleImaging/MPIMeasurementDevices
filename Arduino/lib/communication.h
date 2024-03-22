@@ -38,9 +38,6 @@ class SerialHandler {
 
 };
 
-#include "Arduino.h"
-#include "communication.h"
-
 bool SerialHandler::updateBufferUntilDelim()
 {
     char nextChar;
