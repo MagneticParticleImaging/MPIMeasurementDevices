@@ -115,7 +115,8 @@ int SerialHandler::read() // Serial communication with PC in particular julia co
         }
         for (int i = 0; i < cmd_size; i++)
         {
-            if (strncmp(cmds[i].id, command, commandOnly) == 0)
+            int length = commandOnly < strlen(cmds[i].id) ? commandOnly : strlen(cmds[i].id);
+            if (strncmp(cmds[i].id, command, length) == 0)
             {
                 cmds[i].callback(command);
                 unknown = false;
