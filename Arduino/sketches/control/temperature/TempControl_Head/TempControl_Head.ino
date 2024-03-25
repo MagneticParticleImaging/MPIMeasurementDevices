@@ -1,15 +1,21 @@
-#include "TemperatureControl.h"
 #include "Arduino.h"
 #include <PID_v1.h>
 #include <math.h>
-
-
 
 //Test Unit1(SensorData[0][0],SensorData[1][0],SensorData[2][0],SensorData[3][0]);
 //HeatUnit unit(A0,3,45,80);
 
 #define ARDUINO_TYPE "HEATINGUNIT"
 #define VERSION "1"
+
+#define LIB_HOME /home/hackelberg/git/MPIMeasurementDevices/Arduino/lib/
+#define IDENT(x) x
+#define STR(a) STR_(a)
+#define STR_(a) #a
+#define INCLUDE_LIB(lib) STR(IDENT(LIB_HOME)IDENT(lib))
+#include INCLUDE_LIB(communication.h)
+#include INCLUDE_LIB(temperature_control.h)
+
 #define NUM_UNITS_START 1
 #define NUM_UNITS 8
 #define NUM_UNITS_MAX 8
@@ -61,16 +67,6 @@ PID *pidUnits[NUM_UNITS];
 
 //####################################################################
 // Communication
-#define INPUT_BUFFER_SIZE 256
-char input_buffer[INPUT_BUFFER_SIZE];
-unsigned int input_pos = 0;
-
-typedef struct {
-  const char *id;
-  int (*handler)(char *);
-} commandHandler_t;
-
-// Command Declarations
 int getAllTemps(char *);
 int getAvgTemps(char *);
 int getTempSet(char *);
@@ -88,7 +84,7 @@ int setEnableHeating(char *);
 int resetOvertemp(char*);
 //int setFoo(char*);
 
-commandHandler_t cmdHandler[] = {
+commandCallback_t cmdHandler[] = {
   { "GET:ALLTEMPS", getAllTemps },
   { "GET:AVGTEMPS", getAvgTemps },
   { "GET:TSET", getTempSet },
@@ -106,6 +102,13 @@ commandHandler_t cmdHandler[] = {
   { "RESET:OVERTEMP", resetOvertemp}
   //{"FOO", setFoo} //for new function: Add command declaration and then command definition (function body)
 };
+
+#define INPUT_BUFFER_SIZE 256
+SerialHandler serialHandler = SerialHandler(INPUT_BUFFER_SIZE, cmdHandler, sizeof(cmdHandler)/sizeof(*cmdHandler));
+
+// Preallocate update variables to avoid heap-fragmentation
+double temp_double[NUM_UNITS];
+int temp_int[NUM_UNITS];
 
 int getCommands(char *) {
   // toDo: Bechreibung
@@ -294,17 +297,22 @@ int getControlMode(char *) {
 //####################################################################
 int setTempSet(char *cmd) {
   // Befehl : !SET:TSET:<1,2,3,4>*#
-  int num = countChars(cmd, ',') + 1;
+  int num = serialHandler.countChars(cmd, ',') + 1;
   if (num == NUM_UNITS) {
     char *base = strchr(cmd, '<') + 1;  // Move to first number
-    char *numEnd;
+    int result = serialHandler.readNumbers(base, temp_double, num);
+
+    if (result != 0) {
+        Serial.print("0#");
+        return 0;
+    }
+
     bool set = true;
     for (int i = 0; i < NUM_UNITS; i++) {
-      float target = strtod(base, &numEnd);  //TODO could add more error checking here with errno and end, start
-      set &= units[i]->setTargetTemp(target);
-      Setpoint[i] = target;
-      base = strchr(numEnd, ',') + 1;       // TODO could be more robust by checking for null
+      set &= units[i]->setTargetTemp(temp_double[i]);
+      Setpoint[i] = temp_double[i];
     }
+
     Serial.print(set);
     Serial.print("#");
   } else {
@@ -317,16 +325,21 @@ int setTempSet(char *cmd) {
 //########################################################################
 int setTempMax(char *cmd) {
   // !SET:TMAX:<2,3,4,5>*#
-  int num = countChars(cmd, ',') + 1;
+  int num = serialHandler.countChars(cmd, ',') + 1;
   if (num == NUM_UNITS) {
     char *base = strchr(cmd, '<') + 1;  // Move to first number
-    char *numEnd;
+    int result = serialHandler.readNumbers(base, temp_double, num);
+
+    if (result != 0) {
+        Serial.print("0#");
+        return 0;
+    }
+
     bool set = true;
     for (int i = 0; i < NUM_UNITS; i++) {
-      float max = strtod(base, &numEnd);  //TODO could add more error checking here with errno and end, start
-      set &= units[i]->setMaxTemp(max);
-      base = strchr(numEnd, ',') + 1;       // TODO could be more robust by checking for null
+      set &= units[i]->setMaxTemp(temp_double[i]);
     }
+
     Serial.print(set);
     Serial.print("#");
   } else {
@@ -373,25 +386,23 @@ int setDutyCycleMode(char *cmd) {
    // !SET:OPTIMIZE_DUTY_CYCLE:<true>*# // true = 0 default PID, false = 1  Opti
   //set OPTIMIZE_DUTY_CYCLE
   //Serial.println(cmd);
-  int num = countChars(cmd, ',') + 1;
-  //Serial.println(num);
-  bool *nextOptiMode = (bool *)malloc(num * sizeof(bool));
-
+  int num = serialHandler.countChars(cmd, ',') + 1;
   char *base = strchr(cmd, '<') + 1;  // Move to first number
-  char *numEnd;
-  for (int i = 0; i < num; i++) {
-    nextOptiMode[i] = strtod(base, &numEnd);  //TODO could add more error checking here with errno and end, start
-    base = strchr(numEnd, ',') + 1;         // TODO could be more robust by checking for null
-    //Serial.println(nextOptiMode[i]);
+  int result = serialHandler.readNumbers(base, temp_int, num);
+
+  if (result != 0 || num != 1) {
+    Serial.print("0#");
+    return 0;
   }
-  if (nextOptiMode[0] == 1) {
+
+  if (temp_int[0] == 1) {
     OPTIMIZE_DUTY_CYCLE = true;
     for (int i = 0; i < num; i++) {
       pidUnits[i]->SetMode(MANUAL);
       //Serial.print("Controlmode_DUTY_CYCLE: Optimized");
     }
   } 
-  else if (nextOptiMode[0] == 0) {
+  else if (temp_int[0] == 0) {
     OPTIMIZE_DUTY_CYCLE = false;
     for (int i = 0; i < num; i++) {
       pidUnits[i]->SetMode(AUTOMATIC);
@@ -405,7 +416,6 @@ int setDutyCycleMode(char *cmd) {
   }
   
   Serial.print("1#");
-  free(nextOptiMode);
   return 0;
   
 }
@@ -429,21 +439,20 @@ int setEnableHeating(char *cmd) {
   //!SET:ENABLE_HEATING:<true>*# // true = 0, false = 1 !SET:ENABLE_HEATING:<1>*#
   //set ENABLE_HEATING
   //Serial.println(cmd);
-  int num = countChars(cmd, ',') + 1;
-  //Serial.println(num);
-  bool *nextACMode = (bool *)malloc(num * sizeof(bool));
-
+  int num = serialHandler.countChars(cmd, ',') + 1;
   char *base = strchr(cmd, '<') + 1;  // Move to first number
-  char *numEnd;
-  for (int i = 0; i < num; i++) {
-    nextACMode[i] = strtod(base, &numEnd);  //TODO could add more error checking here with errno and end, start
-    base = strchr(numEnd, ',') + 1;         // TODO could be more robust by checking for null
-    //Serial.println(nextACMode[i]);
+  int result = serialHandler.readNumbers(base, temp_int, num);
+
+  if (result != 0 || num != 1) {
+    Serial.print("0#");
+    return 0;
   }
-  if (nextACMode[0] == 1) {
+
+  
+  if (temp_int[0] == 1) {
     ENABLE_HEATING = true;
   } 
-  else if (nextACMode[0] == 0) {
+  else if (temp_int[0] == 0) {
     ENABLE_HEATING = false;
   } 
   else {
@@ -452,7 +461,6 @@ int setEnableHeating(char *cmd) {
   //Serial.print("ENABLE_HEATING:");
   //Serial.println(ENABLE_HEATING);
   Serial.print("1#");
-  free(nextACMode);
   return 0;
   //
 }
@@ -468,108 +476,6 @@ int getVersion(char *cmd) {
   Serial.print(VERSION);
   Serial.print("#");
 }
-
-
-
-void serialCommand() {
-  int s = -1;
-  int e = -1;
-  char beginDelim = '!';
-  char *beginCmd;
-  char endDelim = '*';
-  char *endCmd;
-  char *command;
-  bool done = false;
-  bool unknown = false;
-
-  // determin substring
-  if (Serial.available() > 0) {
-    done = updateBufferUntilDelim('#');
-  }
-
-  if (done) {
-    s = -1;
-    if ((beginCmd = strchr(input_buffer, beginDelim)) != NULL) {
-      s = beginCmd - input_buffer;
-    }
-
-    e = -1;
-    if ((endCmd = strchr(input_buffer, endDelim)) != NULL) {
-      e = endCmd - input_buffer;
-    }
-
-    unknown = true;
-    //check if valid command
-    if (e != -1 && s != -1) {
-      command = beginCmd + 1;
-      *endCmd = '\0';
-      //Command=Command.substring// toDO: # will cause "" to display with rules..
-      if (ACK_COMMANDS) {
-        //Serial.print("received command: '");
-        //Serial.print(command);
-        //Serial.println("'");
-      }
-      
-
-      //check for known commands
-      for (int i = 0; i < sizeof(cmdHandler) / sizeof(*cmdHandler); i++) {
-        if (strncmp(cmdHandler[i].id, command, strlen(cmdHandler[i].id)) == 0) {
-          cmdHandler[i].handler(command);
-          unknown = false;
-          input_buffer[0] = '\0';  // "Empty" input buffer
-          break;
-        }
-      }
-    }
-
-    if (unknown) {
-      Serial.println("UNKNOWN");
-      if (displaySerialComm) {
-        Serial.print("Received input: ");
-        Serial.println(input_buffer);
-        getCommands(input_buffer);
-      } 
-      else {
-        Serial.println("#");
-      }
-      Serial.flush();
-    }
-  }
-}
-
-//*****************************************************************
-bool updateBufferUntilDelim(char delim) {
-  char nextChar;
-  while (Serial.available() > 0) {
-    nextChar = Serial.read();
-    if (nextChar == delim) {
-      input_buffer[input_pos] = '\0';
-      input_pos = 0;
-      return true;
-    } 
-    else if (nextChar != '\n') {
-      input_buffer[input_pos % (INPUT_BUFFER_SIZE - 1)] = nextChar;  // Size - 1 to always leave room for \0
-      input_pos++;
-    }
-  }
-  return false;
-}
-
-
-//###### Utility #############################################
-int countChars(char *s, char c) {
-  return *s == '\0'
-           ? 0
-           : countChars(s + 1, c) + (*s == c);
-}
-
-char *string2char(String command) {
-  if (command.length() != 0) {
-    char *p = const_cast<char *>(command.c_str());
-    return p;
-  }
-}
-//END Communication
 
 //###################################################################
 //Versuche Auswertung Serial Port
@@ -622,7 +528,7 @@ void disableTemperatureMeasurement() {
 
 
 void loop() {
-  serialCommand();
+  serialHandler.read();
   currentTime = millis();
 
   // timeCycle
